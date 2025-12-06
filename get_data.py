@@ -40,75 +40,88 @@ def download_openfoodfacts_bulk(num_products=5000):
     
     products_needed = num_products - len(all_products)
     print(f"🎯 Need {products_needed} more products (target: {num_products})")
-    
-    with tqdm(total=products_needed, desc="Fetching") as pbar:
-        for category in categories:
-            for grade in nutrition_grades:
-                if len(all_products) >= num_products:
-                    break
-                    
-                for page in range(1, 20):  # Max 20 pages per combo
+
+    last_save_count = len(all_products)
+
+    try:
+        with tqdm(total=products_needed, desc="Fetching") as pbar:
+            for category in categories:
+                for grade in nutrition_grades:
                     if len(all_products) >= num_products:
                         break
-                    
-                    params = {
-                        'search_terms': category,
-                        'search_simple': 1,
-                        'json': 1,
-                        'page_size': 100,
-                        'page': page,
-                        'tagtype_0': 'nutrition_grades',
-                        'tag_contains_0': 'contains',
-                        'tag_0': grade,
-                        'fields': ','.join([
-                            'code', 'product_name', 'brands', 'categories_tags',
-                            'nutrition_grades', 'ecoscore_grade', 'ecoscore_score',
-                            'nutriments'  # Request the full nutriments object
-                        ])
-                    }
-                    
-                    try:
-                        response = session.get(base_url, params=params, timeout=20)
-                        response.raise_for_status()
-                        
-                        data = response.json()
-                        products = data.get('products', [])
-                        
-                        if not products:
-                            break  # No more products
-                        
-                        # Filter for complete nutrition data
-                        valid_products = []
-                        for product in products:
-                            nutriments = product.get('nutriments', {})
-                            
-                            # REQUIRED: Must have KJ energy + all key nutrients
-                            if (nutriments.get('energy-kj_100g') and 
-                                nutriments.get('sugars_100g') and 
-                                nutriments.get('salt_100g') and 
-                                nutriments.get('saturated-fat_100g') and 
-                                nutriments.get('proteins_100g') and 
-                                nutriments.get('fiber_100g')):
-                                
-                                valid_products.append(product)
-                        
-                        all_products.extend(valid_products)
-                        new_count = len(valid_products)
-                        
-                        pbar.update(new_count)
-                        
-                        # Save cache every 500 products
-                        if len(all_products) % 500 == 0:
-                            with open(cache_file, 'w') as f:
-                                json.dump(all_products, f)
-                            print(f"\n💾 Cached {len(all_products)} products")
-                        
-                        time.sleep(0.3)  # Rate limiting
-                        
-                    except Exception as e:
-                        print(f"\n⚠️ Error {category}-{grade}-{page}: {str(e)[:50]}")
-                        time.sleep(2)
-                        continue
+
+                    for page in range(1, 20):  # Max 20 pages per combo
+                        if len(all_products) >= num_products:
+                            break
+
+                        params = {
+                            'search_terms': category,
+                            'search_simple': 1,
+                            'json': 1,
+                            'page_size': 100,
+                            'page': page,
+                            'tagtype_0': 'nutrition_grades',
+                            'tag_contains_0': 'contains',
+                            'tag_0': grade,
+                            'fields': ','.join([
+                                'code', 'product_name', 'brands', 'categories_tags',
+                                'nutrition_grades', 'ecoscore_grade', 'ecoscore_score',
+                                'nutriments'  # Request the full nutriments object
+                            ])
+                        }
+
+                        try:
+                            response = session.get(base_url, params=params, timeout=20)
+                            response.raise_for_status()
+
+                            data = response.json()
+                            products = data.get('products', [])
+
+                            if not products:
+                                break  # No more products
+
+                            # Filter for complete nutrition data
+                            valid_products = []
+                            for product in products:
+                                nutriments = product.get('nutriments', {})
+
+                                # REQUIRED: Must have KJ energy + all key nutrients
+                                if (nutriments.get('energy-kj_100g') and
+                                    nutriments.get('sugars_100g') and
+                                    nutriments.get('salt_100g') and
+                                    nutriments.get('saturated-fat_100g') and
+                                    nutriments.get('proteins_100g') and
+                                    nutriments.get('fiber_100g')):
+
+                                    valid_products.append(product)
+
+                            all_products.extend(valid_products)
+                            new_count = len(valid_products)
+
+                            pbar.update(new_count)
+
+                            # Save cache every 200 products (more frequent)
+                            if len(all_products) - last_save_count >= 200:
+                                with open(cache_file, 'w') as f:
+                                    json.dump(all_products, f)
+                                print(f"\n💾 Cached {len(all_products)} products")
+                                last_save_count = len(all_products)
+
+                            time.sleep(0.3)  # Rate limiting
+
+                        except Exception as e:
+                            print(f"\n⚠️ Error {category}-{grade}-{page}: {str(e)[:50]}")
+                            time.sleep(2)
+                            continue
+
+    except KeyboardInterrupt:
+        print(f"\n\n⏸️  Interrupted! Saving progress...")
+    finally:
+        # Always save cache when exiting (on interruption or completion)
+        if len(all_products) > 0:
+            with open(cache_file, 'w') as f:
+                json.dump(all_products, f)
+            print(f"💾 Saved {len(all_products)} products to cache")
     
     # Save final dataset
     df = pd.DataFrame(all_products)
