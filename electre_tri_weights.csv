@@ -1,0 +1,9 @@
+Criterion,Weight
+energy_100g,0.1
+saturated_fat_100g,0.1
+sugars_100g,0.1
+salt_100g,0.05
+proteins_100g,0.12
+fiber_100g,0.12
+fvl_percent,0.11
+green_score_value,0.3
